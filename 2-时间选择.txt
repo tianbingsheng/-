@@ -1,0 +1,19 @@
+# [以太坊系列之二: 单调时间monotime-以太坊源码学习](https://www.cnblogs.com/baizx/p/6928736.html)
+
+在程序中需要测量时间时最好使用monotime.Now()而不是time.Now(),相比之下前者更准确.
+
+来个示例:
+
+```
+func main() {
+    var start, elapsed time.Duration
+
+    start = monotime.Now()
+    time.Sleep(time.Millisecond)
+    elapsed = monotime.Since(start)
+
+    fmt.Println(elapsed)
+    // Prints: 1.062759ms
+}
+```
+

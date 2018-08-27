@@ -1,0 +1,68 @@
+# [以太坊系列之三: 以太坊的crypto模块--以太坊源码学习](https://www.cnblogs.com/baizx/p/6936258.html)
+
+# 以太坊的crypto模块
+
+该模块分为两个部分一个是实现sha3,一个是实现secp256k1(这也是比特币中使用的签名算法). 需要说明的是secp256k1有两种实现方式,一种是依赖libsecp256k1,需要cgo,另外一种是依赖[github.com/btcsuite/btcd](https://github.com/btcsuite/btcd),这是一个使用go语言实现的比特币的客户端.
+
+## sha3模块
+
+这个模块实际上可以认为就是一个功能计算sha3-256,用法也很简单,就是调用crypto中的Keccak256,输出是一个32字节的hash结果
+
+```
+hash := crypto.Keccak256Hash([]byte("hello"))
+//hash值:4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45
+```
+
+## secp256k1模块
+
+这个模块比较复杂,如果要细度源码,需要对密码学有比较深入的理解,但是使用起来其实比较简单.
+主要就是签名,验证,以及公钥与以太坊地址转换
+
+### 1.签名
+
+secp256k1的私钥地址长度是32字节256位,公钥地址长度是65字节,而以太坊的地址长度是20字节,
+
+```
+//签名
+var testPrivHex = "289c2857d4598e37fb9647507e47a309d6133539bf21a8b9cb6df88fd5232032"
+//1.获取私钥
+key, _ := crypto.HexToECDSA(testPrivHex)
+//2.对message进行hash
+msg := crypto.Keccak256([]byte("foo"))
+//3.对hash进行签名,注意签名对象只能是hash,并且长度真是32个字节的hash
+sig, err := crypto.Sign(msg, key)
+//sig:d155e94305af7e07dd8c32873e5c03cb95c9e05960ef85be9c07f671da58c73718c19adc397a211aa9e87e519e2038c5a3b658618db335f74f800b8e0cfeef4401
+//签名结果长度和公钥长度相同
+```
+
+### 2.验证
+
+验证签名是否正确,需要公钥,hash(对message进行hash的结果),以及签名. 这里面真正校验的是第三步,也就是公钥是否和我的相同,而不像普通工RSA签名验证一样.当然我们可以封装成和RSA签名验证一样形式的`func VerifySignature(pubKey,msg,sig []byte) error`
+
+```
+//1.从签名中提取公钥
+recoveredPub, err := crypto.Ecrecover(msg, sig)
+//2.将公钥转换为长度为65的字节序列
+recoveredPubBytes:=crypto.FromECDSAPub(recoveredPub)
+//3.校验这个公钥是否和我的公钥一致
+if recoveredPubBytes!=myPubKey {
+    ......
+}
+```
+
+### 3.公钥与地址的转换
+
+以太坊中并没有直接拿公钥当做账户地址,而是进行了一个简单的转换,具体来说就是hash(公钥)的后20位,这里的hash算法是sha3-256,可以用一行代码来表示
+
+```
+crypto.Keccak256(pubKey)[12:]
+```
+
+详细的代码在crypto.go中,
+
+```
+func PubkeyToAddress(p ecdsa.PublicKey) common.Address {
+    pubBytes := FromECDSAPub(&p) //将pubkey转换为字节序列
+    return common.BytesToAddress(Keccak256(pubBytes[1:])[12:]) //对字节序列进行hash并去后二十个字节,BytesToAddress实际上就是[32]byte
+}
+```
